@@ -1639,6 +1639,8 @@ version = "0.1.0"
 dependencies = [
  "emojis",
  "rosu-v2",
+ "serde",
+ "serde_json",
  "serenity",
  "tokio",
 ]

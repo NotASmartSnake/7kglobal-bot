@@ -1,7 +1,7 @@
 use super::TextCommand;
 
 use rosu_v2::prelude::*;
-use serenity::builder::{CreateButton, CreateEmbed, CreateMessage};
+use serenity::builder::{CreateButton, CreateEmbed, CreateEmbedFooter, CreateMessage};
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
@@ -27,6 +27,18 @@ impl VerifyCommand {
 async fn get_user_data(ctx: &Context, osu_username: &str) -> Option<UserExtended> {
     let data = ctx.data.read().await;
     let osu: &Osu = data.get::<OsuKey>().expect("API client not found");
+
+    if osu_username.starts_with("https://osu.ppy.sh/users/") {
+        if let Ok(user_id) = osu_username.split("/").last().unwrap().parse::<u32>() {
+            return osu
+                .user(rosu_v2::request::UserId::Id(user_id))
+                .mode(3.into())
+                .await
+                .ok();
+        }
+
+        return None;
+    }
 
     if let Ok(user) = osu.user(osu_username).mode(3.into()).await {
         return Some(user);
@@ -75,15 +87,28 @@ impl TextCommand for VerifyCommand {
 
             let embed = CreateEmbed::new()
                 .title(format!("Mania profile for {}", user.username))
+                .image(user.avatar_url)
                 .description(format!(
                     "**- Country:** {country}\n
-                        **- Rank:** #{rank}",
+                        **- Rank:** Global: #{rank} | Country: #{country_rank}\n
+                        https://osu.ppy.sh/users/{id}
+                        ",
                     country = user.country.trim(),
                     rank = statistics.global_rank.unwrap_or(0),
-                ));
+                    country_rank = statistics.country_rank.unwrap_or(0),
+                    id = user.user_id,
+                ))
+                .footer(CreateEmbedFooter::new(format!(
+                    "[https://osu.ppy.sh/users/{}]",
+                    user.user_id
+                )))
+                .color(0xCE7AFF);
 
             let status_embed = CreateEmbed::new()
-                .title("Verification Request")
+                .title(format!(
+                    "Verification Request for {}",
+                    member.user.display_name()
+                ))
                 .description("**Current status:** 🟡 Pending");
 
             let button = CreateButton::new(id.to_string()).label("Click here to verify");

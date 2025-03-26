@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::env;
 use std::ops::{Deref, DerefMut};
 
+use crate::emoji_exceptions;
+
 pub struct VerificationInfo {
     pub discord_user: Member,
     pub osu_username: String,
@@ -28,10 +30,20 @@ impl VerificationInfo {
             Err(_) => return Err("Could not get server from id".to_string()),
         };
 
+        let mut emoji_shortcode = &self.country.to_lowercase().replace(" ", "_");
+
+        let exceptions = emoji_exceptions::get_emoji_exceptions();
+
+        if let Some(exception) = exceptions.get(emoji_shortcode) {
+            emoji_shortcode = exception;
+        }
+
+        println!("{}", emoji_shortcode);
+
         let role = match guild.role_by_name(
             &(self.country.clone()
                 + " "
-                + emojis::get_by_shortcode(&self.country.to_lowercase().replace(" ", "_"))
+                + emojis::get_by_shortcode(emoji_shortcode)
                     .ok_or(format!(
                         "Could not get emoji from country: {}",
                         &self.country

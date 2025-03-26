@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod config;
+pub mod emoji_exceptions;
 pub mod verification;
 
 use rosu_v2::prelude::*;
@@ -8,6 +9,7 @@ use serenity::model::prelude::*;
 use serenity::prelude::*;
 
 use crate::commands::{SlashCommand, TextCommand};
+use crate::emoji_exceptions::EmojiExceptions;
 use crate::verification::PendingVerifications;
 
 use std::env;
