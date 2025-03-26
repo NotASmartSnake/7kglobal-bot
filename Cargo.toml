@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+emojis = "0.6.4"
+rosu-v2 = "0.10.0"
 serenity = "0.12.4"
 tokio = { version = "1.44.1", features = ["full"] }
 
