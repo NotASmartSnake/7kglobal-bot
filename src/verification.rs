@@ -3,10 +3,9 @@ use serenity::model::prelude::*;
 use serenity::prelude::*;
 
 use std::collections::HashMap;
-use std::env;
 use std::ops::{Deref, DerefMut};
 
-use crate::emoji_exceptions;
+use crate::{GuildKey, emoji_exceptions};
 
 pub struct VerificationInfo {
     pub discord_user: Member,
@@ -18,12 +17,8 @@ pub struct VerificationInfo {
 
 impl VerificationInfo {
     pub async fn apply(&mut self, ctx: &Context) -> Result<(), String> {
-        let guild_id = GuildId::new(
-            env::var("GUILD_ID")
-                .expect("No GUILD_ID in the environment")
-                .parse()
-                .expect("Invalid GUILD_ID"),
-        );
+        let data = ctx.data.read().await;
+        let guild_id = data.get::<GuildKey>().expect("No guild key found");
 
         let guild = match guild_id.to_partial_guild(&ctx.http).await {
             Ok(guild) => guild,
@@ -79,7 +74,10 @@ impl VerificationInfo {
 
         let new_status_embed = CreateEmbed::new()
             .title("Verification Request")
-            .description("**Current status:** 🟢 Accepted");
+            .description(format!(
+                "**Current status for {}:** 🟢 Accepted",
+                self.discord_user.user.display_name()
+            ));
 
         let new_status = EditMessage::new().embed(new_status_embed);
         if let Err(_) = self.status_message.edit(&ctx.http, new_status).await {

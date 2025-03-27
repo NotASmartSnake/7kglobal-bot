@@ -3,17 +3,23 @@ pub mod config;
 pub mod emoji_exceptions;
 pub mod verification;
 
+use config::Config;
 use rosu_v2::prelude::*;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
-use crate::commands::{SlashCommand, TextCommand};
-use crate::emoji_exceptions::EmojiExceptions;
 use crate::verification::PendingVerifications;
+use commands::{config_command, list_command, verify_command};
 
 use std::env;
 use std::str::FromStr;
+
+pub struct GuildKey;
+
+impl TypeMapKey for GuildKey {
+    type Value = GuildId;
+}
 
 pub struct OsuKey;
 
@@ -72,25 +78,29 @@ impl EventHandler for Handler {
 
         let args: Args = message.content[1..].parse().expect("This cannot fail");
 
-        let command = commands::generate_command(args);
-        if let Some(command) = command {
-            tokio::spawn(async move {
-                if let Ok(member) = message.member(&ctx.http).await {
-                    if let Err(e) = command.execute_text(&ctx, message.channel_id, member).await {
-                        if let Err(e) = message.channel_id.say(&ctx.http, e).await {
-                            eprintln!("Could not send message {e}");
-                        }
+        tokio::spawn(async move {
+            if let Ok(member) = message.member(&ctx.http).await {
+                let result = match args.cmd() {
+                    "verify" => {
+                        verify_command::execute(&ctx, message.channel_id, member, args).await
+                    }
+                    "list" => list_command::execute(&ctx, message.channel_id, args).await,
+                    _ => return,
+                };
+                if let Err(e) = result {
+                    if let Err(e) = message.channel_id.say(&ctx.http, e).await {
+                        eprintln!("Could not send message {e}");
                     }
                 }
-            });
-        }
+            }
+        });
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::Command(command) => {
                 let content = match command.data.name.as_str() {
-                    "config" => commands::ConfigCommand::execute(&ctx, &command.data).await,
+                    "config" => config_command::execute(&ctx, &command.data).await,
                     _ => return,
                 };
 
@@ -133,20 +143,21 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, data_about_bot: Ready) {
         println!("session with id: {} started", data_about_bot.session_id);
 
-        let commands = vec![commands::ConfigCommand::register()];
+        let commands = vec![commands::config_command::register()];
 
-        let guild_id = GuildId::new(
-            env::var("GUILD_ID")
-                .expect("No GUILD_ID in the environment")
-                .parse()
-                .expect("Invalid GUILD_ID"),
-        );
+        {
+            let data = ctx.data.read().await;
+            let guild_id = data.get::<GuildKey>().expect("No guild key found");
 
-        let _ = guild_id.set_commands(&ctx.http, commands).await;
+            let _ = guild_id.set_commands(&ctx.http, commands).await;
+        }
 
-        let config = config::Config::default();
+        let config = match Config::load_from_file("config.json") {
+            Some(config) => config,
+            None => Config::default(),
+        };
 
         let mut data = ctx.data.write().await;
-        data.insert::<config::Config>(config);
+        data.insert::<Config>(config);
     }
 }
