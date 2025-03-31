@@ -94,9 +94,10 @@ pub async fn execute(
             ))
             .description("**Current status:** 🟡 Pending");
 
-        let button = CreateButton::new(id.to_string()).label("Click here to verify");
+        let verify_button = CreateButton::new("verify: ".to_string() + &id.to_string())
+            .label("Click here to verify");
 
-        let message = CreateMessage::new().embed(embed).button(button);
+        let message = CreateMessage::new().embed(embed).button(verify_button);
         let message = admin_channel
             .send_message(&ctx.http, message)
             .await

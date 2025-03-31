@@ -90,6 +90,15 @@ impl VerificationInfo {
 
         Ok(())
     }
+
+    pub async fn deny(&self, ctx: &Context) {
+        let new_status_embed = CreateEmbed::new()
+            .title("Verification Request")
+            .description(format!(
+                "**Current status for {}:** 🟢 Denied",
+                self.discord_user.user.display_name()
+            ));
+    }
 }
 
 #[derive(Default)]

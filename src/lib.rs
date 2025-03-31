@@ -12,7 +12,6 @@ use serenity::prelude::*;
 use crate::verification::PendingVerifications;
 use commands::{config_command, list_command, verify_command};
 
-use std::env;
 use std::str::FromStr;
 
 pub struct GuildKey;
@@ -84,7 +83,7 @@ impl EventHandler for Handler {
                     "verify" => {
                         verify_command::execute(&ctx, message.channel_id, member, args).await
                     }
-                    "list" => list_command::execute(&ctx, message.channel_id, args).await,
+                    "list" => list_command::execute(&ctx, &message.channel_id, &member, args).await,
                     _ => return,
                 };
                 if let Err(e) = result {
@@ -118,8 +117,10 @@ impl EventHandler for Handler {
                         .get_mut::<PendingVerifications>()
                         .expect("No pending verification found in data");
                     let id = component.data.custom_id.clone();
+                    let id = id.split(" ").collect::<Vec<&str>>();
+
                     let verification = pending_verifications
-                        .get_mut(&id.parse::<u64>().expect("Invalid Id"))
+                        .get_mut(&id[1].parse::<u64>().expect("Invalid Id"))
                         .expect("Id could not be found in pending verifications");
 
                     let content = match verification.apply(&ctx).await {
