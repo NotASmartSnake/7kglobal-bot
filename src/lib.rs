@@ -119,22 +119,26 @@ impl EventHandler for Handler {
                     let id = component.data.custom_id.clone();
                     let id = id.split(" ").collect::<Vec<&str>>();
 
-                    let verification = pending_verifications
-                        .get_mut(&id[1].parse::<u64>().expect("Invalid Id"))
-                        .expect("Id could not be found in pending verifications");
+                    {
+                        let verification = pending_verifications
+                            .get_mut(&id[1].parse::<u64>().expect("Invalid Id"))
+                            .expect("Id could not be found in pending verifications");
 
-                    let content = match verification.apply(&ctx).await {
-                        Ok(()) => {
-                            format!("Verified user: {}", &verification.discord_user.user.name)
+                        let content = match verification.apply(&ctx).await {
+                            Ok(()) => {
+                                format!("Verified user: {}", &verification.discord_user.user.name)
+                            }
+                            Err(e) => e,
+                        };
+
+                        let data = CreateInteractionResponseMessage::new().content(content);
+                        let response = CreateInteractionResponse::Message(data);
+                        if let Err(e) = component.create_response(&ctx.http, response).await {
+                            eprintln!("Could not create response for interaction: {}", e);
                         }
-                        Err(e) => e,
-                    };
-
-                    let data = CreateInteractionResponseMessage::new().content(content);
-                    let response = CreateInteractionResponse::Message(data);
-                    if let Err(e) = component.create_response(&ctx.http, response).await {
-                        eprintln!("Could not create response for interaction: {}", e);
                     }
+
+                    pending_verifications.remove(&id[1].parse::<u64>().expect("Invalid Id"));
                 }
             }
             _ => println!("Not yet implemented"),

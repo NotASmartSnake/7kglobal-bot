@@ -91,13 +91,25 @@ impl VerificationInfo {
         Ok(())
     }
 
-    pub async fn deny(&self, ctx: &Context) {
+    pub async fn deny(&mut self, ctx: &Context) -> Result<(), String> {
         let new_status_embed = CreateEmbed::new()
             .title("Verification Request")
             .description(format!(
-                "**Current status for {}:** 🟢 Denied",
+                "**Current status for {}:** 🔴 Denied",
                 self.discord_user.user.display_name()
             ));
+
+        let new_status = EditMessage::new().embed(new_status_embed);
+
+        if let Err(_) = self.status_message.edit(&ctx.http, new_status).await {
+            return Err(format!("Could not not edit status message"));
+        }
+
+        if let Err(_) = self.verification_message.delete(&ctx.http).await {
+            return Err(format!("Failed to delete verification prompt"));
+        }
+
+        Ok(())
     }
 }
 
