@@ -60,11 +60,9 @@ pub async fn execute(
 
     let mut data = ctx.data.write().await;
 
-    if let Some(verification_channel) = data
-        .get::<Config>()
-        .ok_or("Could not get config data")?
-        .verification_channel
-    {
+    let config = Config::load().ok_or("Could not load config")?;
+
+    if let Some(verification_channel) = config.channels.verification_channel {
         if channel_id != verification_channel {
             return Ok(());
         }
@@ -72,9 +70,8 @@ pub async fn execute(
         return Err(NOT_CONFIGURED.to_string());
     }
 
-    let admin_channel = data
-        .get::<Config>()
-        .ok_or("Could not get config data".to_string())?
+    let admin_channel = config
+        .channels
         .admin_channel
         .ok_or(NOT_CONFIGURED.to_string())?;
 
@@ -94,10 +91,16 @@ pub async fn execute(
             ))
             .description("**Current status:** 🟡 Pending");
 
-        let verify_button = CreateButton::new("verify: ".to_string() + &id.to_string())
+        let verify_button = CreateButton::new("verify ".to_string() + &id.to_string())
             .label("Click here to verify");
 
-        let message = CreateMessage::new().embed(embed).button(verify_button);
+        let deny_button =
+            CreateButton::new("deny ".to_string() + &id.to_string()).label("Click here to decline");
+
+        let message = CreateMessage::new()
+            .embed(embed)
+            .button(verify_button)
+            .button(deny_button);
         let message = admin_channel
             .send_message(&ctx.http, message)
             .await

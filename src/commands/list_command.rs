@@ -10,10 +10,13 @@ use std::io::Write;
 type Roles = HashMap<String, u32>;
 
 fn is_country_role(role_name: &str) -> bool {
-    match role_name {
-        "Member" => false,
-        "BN" => false,
-        "Bot" => false,
+    match role_name.to_lowercase().as_str() {
+        "member" => false,
+        "bn" => false,
+        "bot" => false,
+        "7k global bot" => false,
+        "7k global testing bot" => false,
+        "carl-bot" => false,
         _ => true,
     }
 }
@@ -68,31 +71,42 @@ async fn list_by_country(
             _ => return Err("Unexpected Channel Type".to_string()),
         };
 
-        if let Permissions::ADMINISTRATOR = guild_id
+        let user_permissions = guild_id
             .to_partial_guild(&ctx.http)
             .await
             .map_err(|_| "Could not get guild from id")?
-            .user_permissions_in(&guild_channel, member)
-        {
+            .user_permissions_in(&guild_channel, member);
+
+        if user_permissions.contains(Permissions::ADMINISTRATOR) {
             cache_members(
                 &ctx,
-                &guild_id.members(&ctx.http, None, None).await.unwrap(),
+                &guild_id
+                    .members(&ctx.http, None, None)
+                    .await
+                    .map_err(|e| format!("Could not get members: {e}"))?,
                 &mut country_roles,
             )
             .await;
+        } else {
+            return Err("Only admins can use the 'recache' argument".to_string());
         }
 
         country_roles
     } else {
-        get_roles_from_cache()
-            .ok_or("Role cache is missing, try running the command with the 'recache' argument")?
+        get_roles_from_cache().ok_or(
+            "Role cache is missing, get an admin to run the command with the 'recache' argument",
+        )?
     };
 
     let mut country_roles = Vec::from_iter(country_roles);
     country_roles.sort_by(|(_, value), (_, value2)| value.cmp(value2));
 
+    if country_roles.len() >= 10 {
+        country_roles = country_roles[0..=9].to_vec()
+    }
+
     let mut buf = String::new();
-    for (country, member_count) in country_roles[0..10].iter() {
+    for (country, member_count) in country_roles.iter() {
         buf += format!("**{}**: {}\n", country, member_count).as_str();
     }
 
@@ -115,7 +129,7 @@ pub async fn execute(
     args: Args,
 ) -> Result<(), String> {
     match args.arg(0).ok_or("Expected an argument".to_string())? {
-        "Country" => list_by_country(ctx, channel_id, member, args).await?,
+        "country" => list_by_country(ctx, channel_id, member, args).await?,
         _ => return Err(format!("Invalid argument: {}", args.arg(0).unwrap())),
     }
 

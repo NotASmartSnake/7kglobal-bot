@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client_id = env::var("OSU_API_ID")?.parse::<u64>()?;
     let client_secret = env::var("OSU_API_SECRET")?;
-    let guild_id = GuildId::new(env::var("GUILD-ID")?.parse::<u64>()?);
+    let guild_id = GuildId::new(env::var("GUILD_ID")?.parse::<u64>()?);
 
     let osu = Osu::new(client_id, client_secret).await?;
 

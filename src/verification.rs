@@ -5,7 +5,7 @@ use serenity::prelude::*;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
-use crate::{GuildKey, emoji_exceptions};
+use crate::config::Config;
 
 pub struct VerificationInfo {
     pub discord_user: Member,
@@ -16,10 +16,7 @@ pub struct VerificationInfo {
 }
 
 impl VerificationInfo {
-    pub async fn apply(&mut self, ctx: &Context) -> Result<(), String> {
-        let data = ctx.data.read().await;
-        let guild_id = data.get::<GuildKey>().expect("No guild key found");
-
+    pub async fn apply(&mut self, ctx: &Context, guild_id: &GuildId) -> Result<(), String> {
         let guild = match guild_id.to_partial_guild(&ctx.http).await {
             Ok(guild) => guild,
             Err(_) => return Err("Could not get server from id".to_string()),
@@ -27,13 +24,14 @@ impl VerificationInfo {
 
         let mut emoji_shortcode = &self.country.to_lowercase().replace(" ", "_");
 
-        let exceptions = emoji_exceptions::get_emoji_exceptions();
+        let exceptions = match Config::load() {
+            Some(config) => config.emoji_exceptions,
+            None => return Err("Please set up the server with /config".to_string()),
+        };
 
         if let Some(exception) = exceptions.get(emoji_shortcode) {
             emoji_shortcode = exception;
         }
-
-        println!("{}", emoji_shortcode);
 
         let role = match guild.role_by_name(
             &(self.country.clone()

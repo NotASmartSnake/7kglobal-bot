@@ -1,9 +1,7 @@
 pub mod commands;
 pub mod config;
-pub mod emoji_exceptions;
 pub mod verification;
 
-use config::Config;
 use rosu_v2::prelude::*;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::prelude::*;
@@ -99,7 +97,7 @@ impl EventHandler for Handler {
         match interaction {
             Interaction::Command(command) => {
                 let content = match command.data.name.as_str() {
-                    "config" => config_command::execute(&ctx, &command.data).await,
+                    "config" => config_command::execute(&command.data).await,
                     _ => return,
                 };
 
@@ -113,22 +111,44 @@ impl EventHandler for Handler {
             Interaction::Component(component) => {
                 if let ComponentInteractionDataKind::Button = component.data.kind {
                     let mut data = ctx.data.write().await;
+
+                    let guild_id = data.get::<GuildKey>().unwrap().clone();
+
                     let pending_verifications = data
                         .get_mut::<PendingVerifications>()
                         .expect("No pending verification found in data");
+
                     let id = component.data.custom_id.clone();
                     let id = id.split(" ").collect::<Vec<&str>>();
+
+                    println!("{:?}", id);
 
                     {
                         let verification = pending_verifications
                             .get_mut(&id[1].parse::<u64>().expect("Invalid Id"))
                             .expect("Id could not be found in pending verifications");
 
-                        let content = match verification.apply(&ctx).await {
-                            Ok(()) => {
-                                format!("Verified user: {}", &verification.discord_user.user.name)
-                            }
-                            Err(e) => e,
+                        let content = match id[0] {
+                            "verify" => match verification.apply(&ctx, &guild_id).await {
+                                Ok(()) => {
+                                    format!(
+                                        "Verified user: {}",
+                                        &verification.discord_user.user.name
+                                    )
+                                }
+                                Err(e) => e,
+                            },
+                            "deny" => match verification.deny(&ctx).await {
+                                Ok(()) => {
+                                    format!(
+                                        "Declined user: {}",
+                                        &verification.discord_user.user.name
+                                    )
+                                }
+                                Err(e) => e,
+                            },
+
+                            _ => "Error: Invalid Id".to_string(),
                         };
 
                         let data = CreateInteractionResponseMessage::new().content(content);
@@ -150,19 +170,12 @@ impl EventHandler for Handler {
 
         let commands = vec![commands::config_command::register()];
 
-        {
-            let data = ctx.data.read().await;
-            let guild_id = data.get::<GuildKey>().expect("No guild key found");
+        let data = ctx.data.read().await;
+        let guild_id = data.get::<GuildKey>().expect("No guild key found");
 
-            let _ = guild_id.set_commands(&ctx.http, commands).await;
-        }
-
-        let config = match Config::load_from_file("config.json") {
-            Some(config) => config,
-            None => Config::default(),
-        };
-
-        let mut data = ctx.data.write().await;
-        data.insert::<Config>(config);
+        guild_id
+            .set_commands(&ctx.http, commands)
+            .await
+            .expect("Could not set guild commands");
     }
 }
