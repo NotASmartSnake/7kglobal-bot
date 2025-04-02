@@ -10,23 +10,27 @@ use crate::{Args, OsuKey};
 const NOT_CONFIGURED: &'static str =
     "The bot is not yet configured, an admin needs to use the /config command";
 
-async fn get_user_data(ctx: &Context, osu_acc: &str) -> Option<UserExtended> {
+async fn get_user_data(ctx: &Context, account: &str) -> Option<UserExtended> {
     let data = ctx.data.read().await;
     let osu: &Osu = data.get::<OsuKey>().expect("API client not found");
 
-    if osu_acc.starts_with("https://osu.ppy.sh/users/") {
-        if let Ok(user_id) = osu_acc.split("/").last().unwrap().parse::<u32>() {
-            return osu
-                .user(rosu_v2::request::UserId::Id(user_id))
-                .mode(3.into())
-                .await
-                .ok();
+    if account.starts_with("https://osu.ppy.sh/users/") || account.starts_with("osu.ppy.sh/users/")
+    {
+        let mut parts = account.split("/");
+        while let Some(part) = parts.next() {
+            if part == "users" {
+                let user_id = parts.next()?;
+                return osu
+                    .user(rosu_v2::request::UserId::Id(user_id.parse::<u32>().ok()?))
+                    .mode(3.into())
+                    .await
+                    .ok();
+            }
         }
-
         return None;
     }
 
-    if let Ok(user) = osu.user(osu_acc).mode(3.into()).await {
+    if let Ok(user) = osu.user(account).mode(3.into()).await {
         return Some(user);
     }
 

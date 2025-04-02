@@ -1,6 +1,5 @@
 use serenity::builder::{CreateCommand, CreateCommandOption};
 use serenity::model::prelude::*;
-use serenity::prelude::*;
 
 use crate::config::Config;
 
@@ -45,12 +44,32 @@ pub fn register() -> CreateCommand {
         CreateCommandOption::new(3.into(), "country", "name of the country").required(true),
     );
 
+    let add_non_country_role = CreateCommandOption::new(
+        1.into(),
+        "add_non_country_role",
+        "flag a role as not a country role",
+    )
+    .add_sub_option(CreateCommandOption::new(8.into(), "role", "the role to flag").required(true));
+
+    let remove_non_country_role = CreateCommandOption::new(
+        1.into(),
+        "remove_non_country_role",
+        "remove the non-country flag from a role",
+    )
+    .add_sub_option(CreateCommandOption::new(
+        8.into(),
+        "role",
+        "the role to edit",
+    ));
+
     let config_command = CreateCommand::new("config")
         .description("Set the bot config")
         .default_member_permissions(Permissions::ADMINISTRATOR)
         .add_option(add_emoji_exception)
         .add_option(remove_emoji_exception)
-        .add_option(set_channel);
+        .add_option(set_channel)
+        .add_option(add_non_country_role)
+        .add_option(remove_non_country_role);
 
     config_command
 }
@@ -72,6 +91,12 @@ pub async fn execute(cmd_data: &CommandData) -> String {
             "remove_emoji_exception" => {
                 remove_emoji_exception(&mut config, &option.value, &mut response_buf)
             }
+            "add_non_country_role" => {
+                add_non_country_role(&mut config, &option.value, &mut response_buf)
+            }
+            "remove_non_country_role" => {
+                remove_non_country_role(&mut config, &option.value, &mut response_buf)
+            }
             _ => response_buf += format!("{} is not a valid option", option.name).as_str(),
         }
     }
@@ -81,6 +106,37 @@ pub async fn execute(cmd_data: &CommandData) -> String {
     }
 
     response_buf
+}
+
+fn remove_non_country_role(
+    config: &mut Config,
+    cmd_value: &ResolvedValue,
+    response_buf: &mut String,
+) {
+    if let ResolvedValue::SubCommand(scmds) = cmd_value {
+        let role = if let ResolvedValue::Role(role) = scmds[0].value {
+            &role.name
+        } else {
+            return;
+        };
+
+        config.non_country_roles.remove(role);
+        *response_buf += "Removed role from being flagged as non-country";
+    }
+}
+
+fn add_non_country_role(config: &mut Config, cmd_value: &ResolvedValue, response_buf: &mut String) {
+    if let ResolvedValue::SubCommand(scmds) = cmd_value {
+        let role = if let ResolvedValue::Role(role) = scmds[0].value {
+            &role.name
+        } else {
+            return;
+        };
+
+        config.non_country_roles.insert(role.to_string());
+
+        *response_buf += format!("Flagged {} as not a country role", role).as_str();
+    }
 }
 
 fn add_emoji_exception(config: &mut Config, cmd_value: &ResolvedValue, response_buf: &mut String) {

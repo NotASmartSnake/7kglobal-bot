@@ -121,8 +121,6 @@ impl EventHandler for Handler {
                     let id = component.data.custom_id.clone();
                     let id = id.split(" ").collect::<Vec<&str>>();
 
-                    println!("{:?}", id);
-
                     {
                         let verification = pending_verifications
                             .get_mut(&id[1].parse::<u64>().expect("Invalid Id"))
@@ -130,38 +128,40 @@ impl EventHandler for Handler {
 
                         let content = match id[0] {
                             "verify" => match verification.apply(&ctx, &guild_id).await {
-                                Ok(()) => {
-                                    format!(
-                                        "Verified user: {}",
-                                        &verification.discord_user.user.name
-                                    )
-                                }
-                                Err(e) => e,
+                                Ok(()) => Ok(format!(
+                                    "Verified user: {}",
+                                    &verification.discord_user.user.name
+                                )),
+                                Err(e) => Err(e),
                             },
                             "deny" => match verification.deny(&ctx).await {
-                                Ok(()) => {
-                                    format!(
-                                        "Declined user: {}",
-                                        &verification.discord_user.user.name
-                                    )
-                                }
-                                Err(e) => e,
+                                Ok(()) => Ok(format!(
+                                    "Declined user: {}",
+                                    &verification.discord_user.user.name
+                                )),
+                                Err(e) => Err(e),
                             },
 
-                            _ => "Error: Invalid Id".to_string(),
+                            _ => Err("Error: Invalid Id".to_string()),
                         };
 
-                        let data = CreateInteractionResponseMessage::new().content(content);
+                        let data = match content {
+                            Ok(content) => {
+                                pending_verifications
+                                    .remove(&id[1].parse::<u64>().expect("Invalid Id"));
+                                CreateInteractionResponseMessage::new().content(content)
+                            }
+                            Err(e) => CreateInteractionResponseMessage::new().content(e),
+                        };
+
                         let response = CreateInteractionResponse::Message(data);
                         if let Err(e) = component.create_response(&ctx.http, response).await {
                             eprintln!("Could not create response for interaction: {}", e);
                         }
                     }
-
-                    pending_verifications.remove(&id[1].parse::<u64>().expect("Invalid Id"));
                 }
             }
-            _ => println!("Not yet implemented"),
+            _ => eprintln!("Not yet implemented"),
         }
     }
 

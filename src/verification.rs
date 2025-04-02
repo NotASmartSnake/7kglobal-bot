@@ -24,12 +24,9 @@ impl VerificationInfo {
 
         let mut emoji_shortcode = &self.country.to_lowercase().replace(" ", "_");
 
-        let exceptions = match Config::load() {
-            Some(config) => config.emoji_exceptions,
-            None => return Err("Please set up the server with /config".to_string()),
-        };
+        let config = Config::load().unwrap_or_default();
 
-        if let Some(exception) = exceptions.get(emoji_shortcode) {
+        if let Some(exception) = config.emoji_exceptions.get(emoji_shortcode) {
             emoji_shortcode = exception;
         }
 

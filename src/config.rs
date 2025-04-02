@@ -3,7 +3,7 @@ use serenity::prelude::*;
 
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::Write;
 
@@ -17,6 +17,7 @@ pub struct Channels {
 pub struct Config {
     pub channels: Channels,
     pub emoji_exceptions: HashMap<String, String>,
+    pub non_country_roles: HashSet<String>,
 }
 
 impl TypeMapKey for Config {
