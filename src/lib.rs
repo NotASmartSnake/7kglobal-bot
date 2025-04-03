@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod config;
+pub mod user;
 pub mod verification;
 
 use rosu_v2::prelude::*;
