@@ -3,7 +3,6 @@ pub mod config;
 pub mod user;
 pub mod verification;
 
-use rosu_v2::prelude::*;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::prelude::*;
 use serenity::prelude::*;
@@ -17,12 +16,6 @@ pub struct GuildKey;
 
 impl TypeMapKey for GuildKey {
     type Value = GuildId;
-}
-
-pub struct OsuKey;
-
-impl TypeMapKey for OsuKey {
-    type Value = Osu;
 }
 
 pub struct Args {
@@ -80,7 +73,7 @@ impl EventHandler for Handler {
             if let Ok(member) = message.member(&ctx.http).await {
                 let result = match args.cmd() {
                     "verify" => {
-                        verify_command::execute(&ctx, message.channel_id, member, args).await
+                        verify_command::execute(&ctx, &message.channel_id, member, args).await
                     }
                     "list" => list_command::execute(&ctx, &message.channel_id, &member, args).await,
                     _ => return,

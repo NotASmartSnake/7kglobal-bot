@@ -1,9 +1,8 @@
-use rosu_v2::prelude::*;
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
+use sevenkey_global_bot::GuildKey;
 use sevenkey_global_bot::verification::PendingVerifications;
-use sevenkey_global_bot::{GuildKey, OsuKey};
 
 use std::env;
 
@@ -21,12 +20,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client_secret = env::var("OSU_API_SECRET")?;
     let guild_id = GuildId::new(env::var("GUILD_ID")?.parse::<u64>()?);
 
-    let osu = Osu::new(client_id, client_secret).await?;
-
     {
         let mut data = client.data.write().await;
         data.insert::<PendingVerifications>(PendingVerifications::default());
-        data.insert::<OsuKey>(osu);
         data.insert::<GuildKey>(guild_id);
     }
 
