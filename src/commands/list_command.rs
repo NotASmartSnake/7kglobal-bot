@@ -83,7 +83,7 @@ pub async fn execute(
 ) -> Result<(), String> {
     match args.arg(0).ok_or("Expected an argument".to_string())? {
         "country" => list_by_country(ctx, channel_id).await?,
-        _ => return Err(format!("Invalid argument: {}", args.arg(0).unwrap())),
+        _ => return Err("Invalid argument".to_string()),
     }
 
     Ok(())
