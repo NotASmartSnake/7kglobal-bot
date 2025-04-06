@@ -6,7 +6,7 @@ pub enum Game {
     Quaver,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Ranks {
     pub global: Option<u32>,
     pub country: Option<u32>,
@@ -21,23 +21,40 @@ pub struct User {
     pub link: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
+struct OsuUser {
+    pub username: String,
+    pub country: OsuCountry,
+    pub statistics: OsuUserStatistics,
+    pub avatar_url: String,
+    pub id: u32,
+}
+
+#[derive(Deserialize, Debug)]
+struct OsuUserStatistics {
+    pub global_rank: Option<u32>,
+    pub country_rank: Option<u32>,
+}
+
+#[derive(Deserialize, Debug)]
 struct OsuCountry {
     pub code: String,
 }
 
 impl User {
     pub fn from_osu(response: &str) -> Option<Self> {
-        let response = serde_json::from_str::<HashMap<String, String>>(response).unwrap();
+        println!("{:?}", response);
+        let response = serde_json::from_str::<OsuUser>(response).unwrap();
+        println!("{:?}", response);
+        let username = response.username;
+        let country = response.country.code;
+        let avatar_url = response.avatar_url;
+        let link = format!("http://osu.ppy.sh/users/{}", response.id);
 
-        let username = response.get("username")?;
-        let country = serde_json::from_str::<OsuCountry>(response.get("country")?)
-            .unwrap()
-            .code;
-        let ranks = serde_json::from_str::<Ranks>(response.get("rank")?).unwrap();
-        let avatar_url = response.get("avatar_url")?;
-        let id = response.get("id")?;
-        let link = format!("https://osu.ppy.sh/users/{}", id);
+        let ranks = Ranks {
+            global: response.statistics.global_rank,
+            country: response.statistics.country_rank,
+        };
 
         Some(Self {
             game: Game::Osu,

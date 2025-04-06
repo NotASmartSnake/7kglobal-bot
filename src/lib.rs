@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod config;
+pub mod game_api;
 pub mod user;
 pub mod verification;
 

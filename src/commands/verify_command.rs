@@ -6,19 +6,27 @@ use std::str::FromStr;
 
 use crate::Args;
 use crate::config::Config;
+use crate::game_api::Osu;
 use crate::user::User;
 use crate::verification::{PendingVerifications, VerificationInfo};
 
 const NOT_CONFIGURED: &'static str =
     "The bot is not yet configured, an admin needs to use the /config command";
 
-async fn get_user_data(account: &str) -> Option<User> {
+async fn get_user_data(ctx: &Context, account: &str) -> Option<User> {
     if account.starts_with("https://osu.ppy.sh/users/") || account.starts_with("osu.ppy.sh/users/")
     {
+        let data = ctx.data.read().await;
+        let osu = data.get::<Osu>().unwrap();
+
         let mut parts = account.split("/");
         while let Some(part) = parts.next() {
             if part == "users" {
                 let user_id = parts.next()?;
+                let response = osu.get_user(user_id).await?;
+                let response_text = response.text().await.ok()?;
+
+                return User::from_osu(&response_text);
             }
         }
         return None;
@@ -50,7 +58,7 @@ pub async fn execute(
     member: Member,
     args: Args,
 ) -> Result<(), String> {
-    let user = get_user_data(&args.arg(0).ok_or("No argument supplied")?).await;
+    let user = get_user_data(&ctx, &args.arg(0).ok_or("No argument supplied")?).await;
 
     let mut data = ctx.data.write().await;
 
