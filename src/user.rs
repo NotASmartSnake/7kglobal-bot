@@ -6,10 +6,10 @@ pub enum Game {
     Quaver,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Ranks {
-    global: u32,
-    country: u32,
+    pub global: Option<u32>,
+    pub country: Option<u32>,
 }
 
 pub struct User {
@@ -18,30 +18,49 @@ pub struct User {
     pub country: String,
     pub ranks: Ranks,
     pub avatar_url: String,
+    pub link: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
+struct OsuUser {
+    pub username: String,
+    pub country: OsuCountry,
+    pub statistics: OsuUserStatistics,
+    pub avatar_url: String,
+    pub id: u32,
+}
+
+#[derive(Deserialize, Debug)]
+struct OsuUserStatistics {
+    pub global_rank: Option<u32>,
+    pub country_rank: Option<u32>,
+}
+
+#[derive(Deserialize, Debug)]
 struct OsuCountry {
     pub code: String,
 }
 
 impl User {
     pub fn from_osu(response: &str) -> Option<Self> {
-        let response = serde_json::from_str::<HashMap<String, String>>(response).unwrap();
+        let response = serde_json::from_str::<OsuUser>(response).unwrap();
+        let username = response.username;
+        let country = response.country.code;
+        let avatar_url = response.avatar_url;
+        let link = format!("http://osu.ppy.sh/users/{}", response.id);
 
-        let username = response.get("username")?;
-        let country = serde_json::from_str::<OsuCountry>(response.get("country")?)
-            .unwrap()
-            .code;
-        let ranks = serde_json::from_str::<Ranks>(response.get("rank")?).unwrap();
-        let avatar_url = response.get("avatar_url")?;
+        let ranks = Ranks {
+            global: response.statistics.global_rank,
+            country: response.statistics.country_rank,
+        };
 
         Some(Self {
             game: Game::Osu,
             username: username.to_string(),
+            avatar_url: avatar_url.to_string(),
             country,
             ranks,
-            avatar_url: avatar_url.to_string(),
+            link,
         })
     }
     pub fn from_quaver(response: &str) -> Option<Self> {
@@ -52,7 +71,8 @@ impl User {
         let username = response.get("username")?;
         let avatar_url = response.get("avatar_url")?;
         let country = response.get("country")?;
-
+        let id = response.get("id")?;
+        let link = format!("https://quavergame.com/user/{}", id);
         let ranks = serde_json::from_str::<Ranks>(stats_7k.get("ranks")?).unwrap();
 
         Some(Self {
@@ -61,6 +81,7 @@ impl User {
             country: country.to_string(),
             avatar_url: avatar_url.to_string(),
             ranks,
+            link,
         })
     }
 }
