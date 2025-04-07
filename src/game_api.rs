@@ -5,9 +5,9 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 pub struct Osu {
+    client: Client,
     client_id: String,
     client_secret: String,
-    client: Client,
     auth: OsuAuth,
     expires_in: Duration,
     refreshed_at: Instant,
@@ -108,8 +108,14 @@ impl TypeMapKey for Osu {
     type Value = Osu;
 }
 
-pub struct Quaver {
-    client: Client,
+pub struct Quaver;
+
+impl Quaver {
+    pub async fn get_user(user_id: &str) -> Option<Response> {
+        let api_url = format!("https://api.quavergame.com/v2/user/{}", user_id);
+
+        Some(reqwest::get(api_url).await.ok()?)
+    }
 }
 
 impl TypeMapKey for Quaver {

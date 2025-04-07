@@ -6,8 +6,8 @@ use std::str::FromStr;
 
 use crate::Args;
 use crate::config::Config;
-use crate::game_api::Osu;
-use crate::user::User;
+use crate::game_api::{Osu, Quaver};
+use crate::user::{Game, User};
 use crate::verification::{PendingVerifications, VerificationInfo};
 
 const NOT_CONFIGURED: &'static str =
@@ -33,19 +33,38 @@ async fn get_user_data(ctx: &Context, account: &str) -> Option<User> {
         return None;
     }
 
+    if account.starts_with("https://quavergame.com/user")
+        || account.starts_with("quavergame.com/user")
+    {
+        let mut parts = account.split("/");
+        while let Some(part) = parts.next() {
+            if part == "user" {
+                let user_id = parts.next()?;
+                let response = Quaver::get_user(user_id).await?;
+                let response_text = response.text().await.ok()?;
+
+                return User::from_quaver(&response_text);
+            }
+        }
+    }
     None
 }
 
 fn create_profile_embed(user: &User) -> CreateEmbed {
+    let profile_type = match user.game {
+        Game::Osu => "Mania",
+        Game::Quaver => "Quaver 7k",
+    };
+
     CreateEmbed::new()
-        .title(format!("Mania profile for {}", user.username))
+        .title(format!("{} profile for {}", profile_type, user.username))
         .image(user.avatar_url.clone())
         .description(format!(
             "**- Country:** {country}\n
                         **- Rank:** Global: #{rank} | Country: #{country_rank}\n
                         [{link}]
                         ",
-            country = user.country.trim(),
+            country = country_from_code(user.country.trim()),
             rank = user.ranks.global.unwrap_or(0),
             country_rank = user.ranks.country.unwrap_or(0),
             link = user.link,

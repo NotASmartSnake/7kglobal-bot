@@ -1,5 +1,4 @@
 use serde::Deserialize;
-use std::collections::HashMap;
 
 pub enum Game {
     Osu,
@@ -41,12 +40,28 @@ struct OsuCountry {
     pub code: String,
 }
 
+#[derive(Deserialize, Debug)]
+struct QuaverUserResponse {
+    pub user: QuaverUser,
+}
+
+#[derive(Deserialize, Debug)]
+struct QuaverUser {
+    pub id: u32,
+    pub username: String,
+    pub avatar_url: String,
+    pub stats_keys7: QuaverUserStatistics,
+    pub country: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct QuaverUserStatistics {
+    pub ranks: Ranks,
+}
+
 impl User {
     pub fn from_osu(response: &str) -> Option<Self> {
         let response = serde_json::from_str::<OsuUser>(response).unwrap();
-        let username = response.username;
-        let country = response.country.code;
-        let avatar_url = response.avatar_url;
         let link = format!("http://osu.ppy.sh/users/{}", response.id);
 
         let ranks = Ranks {
@@ -56,31 +71,26 @@ impl User {
 
         Some(Self {
             game: Game::Osu,
-            username: username.to_string(),
-            avatar_url: avatar_url.to_string(),
-            country,
+            username: response.username.to_string(),
+            avatar_url: response.avatar_url.to_string(),
+            country: response.country.code.to_string(),
             ranks,
             link,
         })
     }
-    pub fn from_quaver(response: &str) -> Option<Self> {
-        let response = serde_json::from_str::<HashMap<String, String>>(response).unwrap();
-        let stats_7k =
-            serde_json::from_str::<HashMap<String, String>>(response.get("stats_keys7")?).unwrap();
 
-        let username = response.get("username")?;
-        let avatar_url = response.get("avatar_url")?;
-        let country = response.get("country")?;
-        let id = response.get("id")?;
-        let link = format!("https://quavergame.com/user/{}", id);
-        let ranks = serde_json::from_str::<Ranks>(stats_7k.get("ranks")?).unwrap();
+    pub fn from_quaver(response: &str) -> Option<Self> {
+        let response = serde_json::from_str::<QuaverUserResponse>(response)
+            .unwrap()
+            .user;
+        let link = format!("https://quavergame.com/user/{}", response.id);
 
         Some(Self {
             game: Game::Quaver,
-            username: username.to_string(),
-            country: country.to_string(),
-            avatar_url: avatar_url.to_string(),
-            ranks,
+            username: response.username.to_string(),
+            country: response.country.to_string(),
+            avatar_url: response.avatar_url.to_string(),
+            ranks: response.stats_keys7.ranks,
             link,
         })
     }
