@@ -16,8 +16,9 @@ const NOT_CONFIGURED: &'static str =
 async fn get_user_data(ctx: &Context, account: &str) -> Option<User> {
     if account.starts_with("https://osu.ppy.sh/users/") || account.starts_with("osu.ppy.sh/users/")
     {
-        let data = ctx.data.read().await;
-        let osu = data.get::<Osu>().unwrap();
+        // write access so that the access token can be refreshed upon timeout
+        let mut data = ctx.data.write().await;
+        let osu = data.get_mut::<Osu>().unwrap();
 
         let mut parts = account.split("/");
         while let Some(part) = parts.next() {

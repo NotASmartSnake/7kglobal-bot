@@ -43,9 +43,7 @@ struct OsuCountry {
 
 impl User {
     pub fn from_osu(response: &str) -> Option<Self> {
-        println!("{:?}", response);
         let response = serde_json::from_str::<OsuUser>(response).unwrap();
-        println!("{:?}", response);
         let username = response.username;
         let country = response.country.code;
         let avatar_url = response.avatar_url;
