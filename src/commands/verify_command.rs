@@ -6,7 +6,7 @@ use serenity::prelude::*;
 
 use crate::Args;
 use crate::config::Config;
-use crate::game_api::{Osu, Quaver, Tachi};
+use crate::game_api::{DMJam, Osu, Quaver, Tachi};
 use crate::user::{Game, User};
 use crate::verification::{PendingVerifications, VerificationInfo};
 
@@ -71,6 +71,20 @@ async fn get_user_data(ctx: &Context, account: &str) -> Option<User> {
             }
         }
     }
+    if account.starts_with("https://dmjam.net/player-scoreboard/")
+        || account.starts_with("dmjam.net/player-scoreboard/")
+    {
+        let mut parts = account.split("/");
+        while let Some(part) = parts.next() {
+            if part == "player-scoreboard" {
+                let user_id = parts.next()?;
+                let response = DMJam::get_user(user_id).await?;
+                let response_text = response.text().await.ok()?;
+
+                return Some(User::from_dmjam(&response_text));
+            }
+        }
+    }
     None
 }
 
@@ -79,6 +93,7 @@ fn create_profile_embed(user: &User, country: &str) -> CreateEmbed {
         Game::Osu => "Mania",
         Game::Quaver => "Quaver 7k",
         Game::BMS => "BMS 7k",
+        Game::DMJam => "DMJam",
     };
 
     CreateEmbed::new()

@@ -137,6 +137,16 @@ impl Tachi {
     }
 }
 
+pub struct DMJam;
+
+impl DMJam {
+    pub async fn get_user(user_id: &str) -> Option<Response> {
+        let api_url = format!("https://dmjam.net/api/player/{}", user_id);
+
+        Some(reqwest::get(api_url).await.ok()?)
+    }
+}
+
 impl TypeMapKey for Quaver {
     type Value = Quaver;
 }

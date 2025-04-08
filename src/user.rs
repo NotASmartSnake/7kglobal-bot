@@ -4,6 +4,7 @@ pub enum Game {
     Osu,
     Quaver,
     BMS,
+    DMJam,
 }
 
 #[derive(Deserialize, Debug)]
@@ -94,6 +95,14 @@ struct TachiRankingData {
     pub ranking: u32,
 }
 
+#[derive(Deserialize, Debug)]
+struct DMJamUser {
+    player_code: u32,
+    nickname: String,
+    player_ranking: u32,
+    level: u32,
+}
+
 impl User {
     pub fn from_osu(response: &str) -> Self {
         let response = serde_json::from_str::<OsuUser>(response).unwrap();
@@ -131,11 +140,9 @@ impl User {
     }
 
     pub fn from_tachi(user_response: &str, user_game_stats_response: &str) -> Self {
-        println!("{}", user_response);
         let user_response = serde_json::from_str::<TachiUserResponse>(user_response)
             .unwrap()
             .body;
-        println!("{}", user_game_stats_response);
         let user_game_stats_response =
             serde_json::from_str::<TachiGameStatsResponse>(user_game_stats_response)
                 .unwrap()
@@ -161,6 +168,29 @@ impl User {
             ),
             link,
             ranks,
+        }
+    }
+
+    pub fn from_dmjam(response: &str) -> Self {
+        let response = serde_json::from_str::<DMJamUser>(response).unwrap();
+
+        let ranks = Ranks {
+            global: Some(response.player_ranking),
+            country: None,
+        };
+
+        let link = format!(
+            "https://dmjam.net/player-scoreboard/{}/2",
+            response.player_code
+        );
+
+        Self {
+            game: Game::DMJam,
+            username: response.nickname,
+            avatar_url: String::new(),
+            ranks,
+            country: None,
+            link,
         }
     }
 }
