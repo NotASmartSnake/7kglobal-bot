@@ -1,12 +1,12 @@
-use serenity::builder::{CreateButton, CreateEmbed, CreateMessage};
+use serenity::builder::{
+    CreateButton, CreateEmbed, CreateMessage, CreateSelectMenu, CreateSelectMenuKind,
+};
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
-use std::str::FromStr;
-
 use crate::Args;
 use crate::config::Config;
-use crate::game_api::{Osu, Quaver};
+use crate::game_api::{Osu, Quaver, Tachi};
 use crate::user::{Game, User};
 use crate::verification::{PendingVerifications, VerificationInfo};
 
@@ -27,7 +27,7 @@ async fn get_user_data(ctx: &Context, account: &str) -> Option<User> {
                 let response = osu.get_user(user_id).await?;
                 let response_text = response.text().await.ok()?;
 
-                return User::from_osu(&response_text);
+                return Some(User::from_osu(&response_text));
             }
         }
         return None;
@@ -43,17 +43,42 @@ async fn get_user_data(ctx: &Context, account: &str) -> Option<User> {
                 let response = Quaver::get_user(user_id).await?;
                 let response_text = response.text().await.ok()?;
 
-                return User::from_quaver(&response_text);
+                return Some(User::from_quaver(&response_text));
+            }
+        }
+    }
+
+    if account.starts_with("https://boku.tachi.ac/u/")
+        || account.starts_with("boku.tachi.ac/u/")
+        || account.starts_with("https://bokutachi.xyz/u/")
+        || account.starts_with("bokutachi.xyz/u/")
+    {
+        let mut parts = account.split("/");
+        while let Some(part) = parts.next() {
+            if part == "u" {
+                let user_id = parts.next()?;
+
+                let user_response = Tachi::get_user(user_id).await?;
+                let user_response_text = user_response.text().await.ok()?;
+
+                let game_stats_response = Tachi::get_game_stats(user_id, "bms", "7K").await?;
+                let game_stats_response_text = game_stats_response.text().await.ok()?;
+
+                return Some(User::from_tachi(
+                    &user_response_text,
+                    &game_stats_response_text,
+                ));
             }
         }
     }
     None
 }
 
-fn create_profile_embed(user: &User) -> CreateEmbed {
+fn create_profile_embed(user: &User, country: &str) -> CreateEmbed {
     let profile_type = match user.game {
         Game::Osu => "Mania",
         Game::Quaver => "Quaver 7k",
+        Game::BMS => "BMS 7k",
     };
 
     CreateEmbed::new()
@@ -64,12 +89,86 @@ fn create_profile_embed(user: &User) -> CreateEmbed {
                         **- Rank:** Global: #{rank} | Country: #{country_rank}\n
                         [{link}]
                         ",
-            country = country_from_code(user.country.trim()),
+            country = country,
             rank = user.ranks.global.unwrap_or(0),
             country_rank = user.ranks.country.unwrap_or(0),
             link = user.link,
         ))
         .color(0xCE7AFF)
+}
+
+async fn country_interaction(
+    ctx: &Context,
+    verification: &VerificationInfo,
+    channel_id: &ChannelId,
+) {
+    let country_select = CreateSelectMenu::new(
+        format!("GET-COUNTRY: {}", verification.id),
+        CreateSelectMenuKind::Role {
+            default_roles: None,
+        },
+    );
+    let message = CreateMessage::new()
+        .select_menu(country_select)
+        .content(format!(
+            "**{}, Select your country:**",
+            verification.discord_user
+        ));
+
+    channel_id.send_message(&ctx.http, message).await.unwrap();
+}
+
+pub async fn verify_user(
+    ctx: &Context,
+    verification: &mut VerificationInfo,
+    current_channel: &ChannelId,
+    admin_channel: &ChannelId,
+) -> Result<(), String> {
+    let id = verification.id;
+
+    let country = crate::country_from_code(
+        &verification
+            .user
+            .country
+            .clone()
+            .ok_or("Country has not been set")?,
+    )
+    .ok_or("Country is not valid")?;
+
+    let embed = create_profile_embed(&verification.user, country);
+
+    let status_embed = CreateEmbed::new()
+        .title(format!(
+            "Verification Request for {}",
+            verification.discord_user.user.display_name()
+        ))
+        .description("**Current status:** 🟡 Pending");
+
+    let verify_button =
+        CreateButton::new("verify ".to_string() + &id.to_string()).label("Click here to verify");
+
+    let deny_button =
+        CreateButton::new("deny ".to_string() + &id.to_string()).label("Click here to decline");
+
+    let message = CreateMessage::new()
+        .embed(embed)
+        .button(verify_button)
+        .button(deny_button);
+    let message = admin_channel
+        .send_message(&ctx.http, message)
+        .await
+        .expect("Failed to send verification message");
+
+    let status_message = CreateMessage::new().embed(status_embed);
+    let status_message = current_channel
+        .send_message(&ctx.http, status_message)
+        .await
+        .expect("Failed to send status message");
+
+    verification.status_message = Some(status_message);
+    verification.verification_message = Some(message);
+
+    Ok(())
 }
 
 pub async fn execute(
@@ -97,57 +196,29 @@ pub async fn execute(
         .admin_channel
         .ok_or(NOT_CONFIGURED.to_string())?;
 
+    let verifications = data
+        .get_mut::<PendingVerifications>()
+        .expect("No verification hashmap found");
+
     if let Some(user) = user {
-        let verifications = data
-            .get_mut::<PendingVerifications>()
-            .expect("No verification hashmap found");
         let id = verifications.use_current_id();
 
-        let country = country_from_code(&user.country);
-
-        let embed = create_profile_embed(&user);
-
-        let status_embed = CreateEmbed::new()
-            .title(format!(
-                "Verification Request for {}",
-                member.user.display_name()
-            ))
-            .description("**Current status:** 🟡 Pending");
-
-        let verify_button = CreateButton::new("verify ".to_string() + &id.to_string())
-            .label("Click here to verify");
-
-        let deny_button =
-            CreateButton::new("deny ".to_string() + &id.to_string()).label("Click here to decline");
-
-        let message = CreateMessage::new()
-            .embed(embed)
-            .button(verify_button)
-            .button(deny_button);
-        let message = admin_channel
-            .send_message(&ctx.http, message)
-            .await
-            .expect("Failed to send verification message");
-
-        let status_message = CreateMessage::new().embed(status_embed);
-        let status_message = channel_id
-            .send_message(&ctx.http, status_message)
-            .await
-            .expect("Failed to send status message");
-
-        let verification_info = VerificationInfo {
-            discord_user: member,
-            osu_username: user.username.to_string(),
-            country: country.trim().to_string(),
-            status_message,
-            verification_message: message,
+        let mut verification_info = VerificationInfo {
+            id: id as u32,
+            discord_user: member.clone(),
+            user,
+            status_message: None,
+            verification_message: None,
         };
 
-        verifications.insert(id, verification_info);
+        if let Some(_) = verification_info.user.country {
+            verify_user(&ctx, &mut verification_info, &channel_id, &admin_channel).await?;
+            verifications.insert(id, verification_info);
+        } else {
+            country_interaction(&ctx, &verification_info, &channel_id).await;
+            verifications.insert(id, verification_info);
+        };
     };
-    Ok(())
-}
 
-fn country_from_code(code: &str) -> &'static str {
-    celes::Country::from_str(code).unwrap().long_name
+    Ok(())
 }

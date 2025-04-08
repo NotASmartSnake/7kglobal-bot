@@ -8,6 +8,8 @@ use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMess
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
+use regex::Regex;
+
 use crate::verification::PendingVerifications;
 use commands::{config_command, list_command, verify_command};
 
@@ -55,6 +57,7 @@ impl FromStr for Args {
     }
 }
 
+#[derive(Default)]
 pub struct Handler;
 
 #[serenity::async_trait]
@@ -104,56 +107,106 @@ impl EventHandler for Handler {
             }
 
             Interaction::Component(component) => {
+                let mut data = ctx.data.write().await;
+                let guild_id = data.get::<GuildKey>().unwrap().clone();
+
+                let id = component.data.custom_id.clone();
+                let id = id.split(" ").collect::<Vec<&str>>();
                 if let ComponentInteractionDataKind::Button = component.data.kind {
-                    let mut data = ctx.data.write().await;
+                    let verifications = data.get_mut::<PendingVerifications>().unwrap();
 
-                    let guild_id = data.get::<GuildKey>().unwrap().clone();
+                    let verification = verifications
+                        .get_mut(&id[1].parse::<u64>().expect("Invalid Id"))
+                        .expect("Id could not be found in pending verifications");
 
-                    let pending_verifications = data
-                        .get_mut::<PendingVerifications>()
-                        .expect("No pending verification found in data");
+                    let content = match id[0] {
+                        "verify" => match verification.apply(&ctx, &guild_id).await {
+                            Ok(()) => Ok(format!(
+                                "Verified user: {}",
+                                &verification.discord_user.user.name
+                            )),
+                            Err(e) => Err(e),
+                        },
+                        "deny" => match verification.deny(&ctx).await {
+                            Ok(()) => Ok(format!(
+                                "Declined user: {}",
+                                &verification.discord_user.user.name
+                            )),
+                            Err(e) => Err(e),
+                        },
 
-                    let id = component.data.custom_id.clone();
-                    let id = id.split(" ").collect::<Vec<&str>>();
+                        _ => Err("Error: Invalid Id".to_string()),
+                    };
 
-                    {
-                        let verification = pending_verifications
-                            .get_mut(&id[1].parse::<u64>().expect("Invalid Id"))
-                            .expect("Id could not be found in pending verifications");
-
-                        let content = match id[0] {
-                            "verify" => match verification.apply(&ctx, &guild_id).await {
-                                Ok(()) => Ok(format!(
-                                    "Verified user: {}",
-                                    &verification.discord_user.user.name
-                                )),
-                                Err(e) => Err(e),
-                            },
-                            "deny" => match verification.deny(&ctx).await {
-                                Ok(()) => Ok(format!(
-                                    "Declined user: {}",
-                                    &verification.discord_user.user.name
-                                )),
-                                Err(e) => Err(e),
-                            },
-
-                            _ => Err("Error: Invalid Id".to_string()),
-                        };
-
-                        let data = match content {
-                            Ok(content) => {
-                                pending_verifications
-                                    .remove(&id[1].parse::<u64>().expect("Invalid Id"));
-                                CreateInteractionResponseMessage::new().content(content)
-                            }
-                            Err(e) => CreateInteractionResponseMessage::new().content(e),
-                        };
-
-                        let response = CreateInteractionResponse::Message(data);
-                        if let Err(e) = component.create_response(&ctx.http, response).await {
-                            eprintln!("Could not create response for interaction: {}", e);
+                    let data = match content {
+                        Ok(content) => {
+                            verifications.remove(&id[1].parse::<u64>().expect("Invalid Id"));
+                            CreateInteractionResponseMessage::new().content(content)
                         }
+                        Err(e) => CreateInteractionResponseMessage::new().content(e),
+                    };
+
+                    let response = CreateInteractionResponse::Message(data);
+                    if let Err(e) = component.create_response(&ctx.http, response).await {
+                        eprintln!("Could not create response for interaction: {}", e);
                     }
+                }
+                if let ComponentInteractionDataKind::RoleSelect { ref values } = component.data.kind
+                {
+                    let admin_channel = config::Config::load()
+                        .unwrap()
+                        .channels
+                        .admin_channel
+                        .expect("Server has not been configured");
+
+                    let verifications = data.get_mut::<PendingVerifications>().unwrap();
+
+                    let mut verification = verifications
+                        .get_mut(&id[1].parse::<u64>().expect("Invalid Id"))
+                        .expect("Id could not be found in pending verifications");
+
+                    let country =
+                        remove_emojis(&guild_id.role(&ctx.http, values[0]).await.unwrap().name);
+
+                    verification.user.country = Some(
+                        code_from_country(&country.split_whitespace().collect::<String>())
+                            .unwrap()
+                            .to_string(),
+                    );
+
+                    if !(component.user.id == verification.discord_user.user.id) {
+                        let message = CreateInteractionResponseMessage::new()
+                            .content("Only the user who made the verification request can select the country here");
+
+                        let response = CreateInteractionResponse::Message(message);
+                        component
+                            .create_response(&ctx.http, response)
+                            .await
+                            .unwrap();
+                        return;
+                    }
+
+                    verify_command::verify_user(
+                        &ctx,
+                        &mut verification,
+                        &component.channel_id,
+                        &admin_channel,
+                    )
+                    .await
+                    .expect("Failed to verify");
+
+                    let message = CreateInteractionResponseMessage::new().content(format!(
+                        "Country selected for {}",
+                        &verification.discord_user
+                    ));
+
+                    let response = CreateInteractionResponse::Message(message);
+                    component
+                        .create_response(&ctx.http, response)
+                        .await
+                        .unwrap();
+
+                    component.message.delete(&ctx.http).await.unwrap();
                 }
             }
             _ => eprintln!("Not yet implemented"),
@@ -173,4 +226,28 @@ impl EventHandler for Handler {
             .await
             .expect("Could not set guild commands");
     }
+}
+
+pub fn country_from_code(code: &str) -> Option<&'static str> {
+    Some(celes::Country::from_str(code).ok()?.long_name)
+}
+
+pub fn code_from_country(country: &str) -> Option<&'static str> {
+    Some(celes::Country::from_str(country).ok()?.code)
+}
+
+pub fn remove_emojis(string: &str) -> String {
+    let regex = Regex::new(concat!(
+        "[",
+        "\u{01F600}-\u{01F64F}", // emoticons
+        "\u{01F300}-\u{01F5FF}", // symbols & pictographs
+        "\u{01F680}-\u{01F6FF}", // transport & map symbols
+        "\u{01F1E0}-\u{01F1FF}", // flags (iOS)
+        "\u{002702}-\u{0027B0}",
+        "\u{0024C2}-\u{01F251}",
+        "]+",
+    ))
+    .unwrap();
+
+    regex.replace_all(string, "").to_string()
 }

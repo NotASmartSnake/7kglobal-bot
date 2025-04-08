@@ -118,6 +118,25 @@ impl Quaver {
     }
 }
 
+pub struct Tachi;
+
+impl Tachi {
+    pub async fn get_user(user_id: &str) -> Option<Response> {
+        let api_url = format!("https://boku.tachi.ac/api/v1/users/{}", user_id);
+
+        Some(reqwest::get(api_url).await.ok()?)
+    }
+
+    pub async fn get_game_stats(user_id: &str, game: &str, playtype: &str) -> Option<Response> {
+        let api_url = format!(
+            "https://boku.tachi.ac/api/v1/users/{}/games/{}/{}",
+            user_id, game, playtype
+        );
+
+        Some(reqwest::get(api_url).await.ok()?)
+    }
+}
+
 impl TypeMapKey for Quaver {
     type Value = Quaver;
 }
