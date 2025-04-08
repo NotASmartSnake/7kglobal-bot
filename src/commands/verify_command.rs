@@ -7,7 +7,7 @@ use serenity::prelude::*;
 use crate::Args;
 use crate::config::Config;
 use crate::game_api::{DMJam, Osu, Quaver, Tachi};
-use crate::user::{Game, User};
+use crate::user::User;
 use crate::verification::{PendingVerifications, VerificationInfo};
 
 const NOT_CONFIGURED: &'static str =
@@ -27,7 +27,7 @@ async fn get_user_data(ctx: &Context, account: &str) -> Option<User> {
                 let response = osu.get_user(user_id).await?;
                 let response_text = response.text().await.ok()?;
 
-                return Some(User::from_osu(&response_text));
+                return User::from_osu(&response_text);
             }
         }
         return None;
@@ -43,7 +43,7 @@ async fn get_user_data(ctx: &Context, account: &str) -> Option<User> {
                 let response = Quaver::get_user(user_id).await?;
                 let response_text = response.text().await.ok()?;
 
-                return Some(User::from_quaver(&response_text));
+                return User::from_quaver(&response_text);
             }
         }
     }
@@ -64,10 +64,7 @@ async fn get_user_data(ctx: &Context, account: &str) -> Option<User> {
                 let game_stats_response = Tachi::get_game_stats(user_id, "bms", "7K").await?;
                 let game_stats_response_text = game_stats_response.text().await.ok()?;
 
-                return Some(User::from_tachi(
-                    &user_response_text,
-                    &game_stats_response_text,
-                ));
+                return User::from_tachi(&user_response_text, &game_stats_response_text);
             }
         }
     }
@@ -81,35 +78,18 @@ async fn get_user_data(ctx: &Context, account: &str) -> Option<User> {
                 let response = DMJam::get_user(user_id).await?;
                 let response_text = response.text().await.ok()?;
 
-                return Some(User::from_dmjam(&response_text));
+                return User::from_dmjam(&response_text);
             }
         }
     }
-    None
-}
 
-fn create_profile_embed(user: &User, country: &str) -> CreateEmbed {
-    let profile_type = match user.game {
-        Game::Osu => "Mania",
-        Game::Quaver => "Quaver 7k",
-        Game::BMS => "BMS 7k",
-        Game::DMJam => "DMJam",
-    };
+    let mut data = ctx.data.write().await;
+    let osu = data.get_mut::<Osu>()?;
 
-    CreateEmbed::new()
-        .title(format!("{} profile for {}", profile_type, user.username))
-        .image(user.avatar_url.clone())
-        .description(format!(
-            "**- Country:** {country}\n
-                        **- Rank:** Global: #{rank} | Country: #{country_rank}\n
-                        [{link}]
-                        ",
-            country = country,
-            rank = user.ranks.global.unwrap_or(0),
-            country_rank = user.ranks.country.unwrap_or(0),
-            link = user.link,
-        ))
-        .color(0xCE7AFF)
+    let response = osu.get_user(format!("@{}", account).as_str()).await?;
+    let response_text = response.text().await.ok()?;
+
+    return User::from_osu(&response_text);
 }
 
 async fn country_interaction(
@@ -150,7 +130,7 @@ pub async fn verify_user(
     )
     .ok_or("Country is not valid")?;
 
-    let embed = create_profile_embed(&verification.user, country);
+    let embed = verification.user.create_profile_embed(country);
 
     let status_embed = CreateEmbed::new()
         .title(format!(

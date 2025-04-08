@@ -168,11 +168,22 @@ impl EventHandler for Handler {
                     let country =
                         remove_emojis(&guild_id.role(&ctx.http, values[0]).await.unwrap().name);
 
-                    verification.user.country = Some(
+                    verification.user.country = if let Some(country) =
                         code_from_country(&country.split_whitespace().collect::<String>())
-                            .unwrap()
-                            .to_string(),
-                    );
+                    {
+                        Some(country.to_string())
+                    } else {
+                        let message = CreateInteractionResponseMessage::new()
+                            .content("Please select a valid country role");
+
+                        let response = CreateInteractionResponse::Message(message);
+                        component
+                            .create_response(&ctx.http, response)
+                            .await
+                            .unwrap();
+
+                        return;
+                    };
 
                     if !(component.user.id == verification.discord_user.user.id) {
                         let message = CreateInteractionResponseMessage::new()

@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use serenity::builder::CreateEmbed;
 
 pub enum Game {
     Osu,
@@ -20,6 +21,8 @@ pub struct User {
     pub ranks: Ranks,
     pub avatar_url: String,
     pub link: String,
+    pub playtime: Option<u32>,
+    pub level: Option<u32>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -35,6 +38,7 @@ struct OsuUser {
 struct OsuUserStatistics {
     pub global_rank: Option<u32>,
     pub country_rank: Option<u32>,
+    pub play_time: Option<u64>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -77,6 +81,7 @@ struct TachiUser {
     pub id: u32,
     pub username: String,
     pub username_lowercase: String,
+    pub playtime: Option<u64>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -104,8 +109,8 @@ struct DMJamUser {
 }
 
 impl User {
-    pub fn from_osu(response: &str) -> Self {
-        let response = serde_json::from_str::<OsuUser>(response).unwrap();
+    pub fn from_osu(response: &str) -> Option<Self> {
+        let response = serde_json::from_str::<OsuUser>(response).ok()?;
         let link = format!("http://osu.ppy.sh/users/{}", response.id);
 
         let ranks = Ranks {
@@ -113,39 +118,50 @@ impl User {
             country: response.statistics.country_rank,
         };
 
-        Self {
+        let playtime = if let Some(playtime) = response.statistics.play_time {
+            Some((playtime / 3600 as u64) as u32)
+        } else {
+            None
+        };
+
+        Some(Self {
             game: Game::Osu,
             username: response.username.to_string(),
             avatar_url: response.avatar_url.to_string(),
             country: Some(response.country.code.to_string()),
             ranks,
             link,
-        }
+            playtime,
+            level: None,
+        })
     }
 
-    pub fn from_quaver(response: &str) -> Self {
+    pub fn from_quaver(response: &str) -> Option<Self> {
         let response = serde_json::from_str::<QuaverUserResponse>(response)
-            .unwrap()
+            .ok()?
             .user;
         let link = format!("https://quavergame.com/user/{}", response.id);
 
-        Self {
+        Some(Self {
             game: Game::Quaver,
             username: response.username.to_string(),
             country: Some(response.country.to_string()),
             avatar_url: response.avatar_url.to_string(),
             ranks: response.stats_keys7.ranks,
             link,
-        }
+            playtime: None,
+            level: None,
+        })
     }
 
-    pub fn from_tachi(user_response: &str, user_game_stats_response: &str) -> Self {
+    pub fn from_tachi(user_response: &str, user_game_stats_response: &str) -> Option<Self> {
         let user_response = serde_json::from_str::<TachiUserResponse>(user_response)
-            .unwrap()
+            .ok()?
             .body;
+
         let user_game_stats_response =
             serde_json::from_str::<TachiGameStatsResponse>(user_game_stats_response)
-                .unwrap()
+                .ok()?
                 .body;
 
         let link = format!(
@@ -158,7 +174,13 @@ impl User {
             country: None,
         };
 
-        Self {
+        let playtime = if let Some(playtime) = user_response.playtime {
+            Some((playtime / 3e6 as u64) as u32)
+        } else {
+            None
+        };
+
+        Some(Self {
             game: Game::BMS,
             username: user_response.username,
             country: None,
@@ -168,11 +190,13 @@ impl User {
             ),
             link,
             ranks,
-        }
+            playtime,
+            level: None,
+        })
     }
 
-    pub fn from_dmjam(response: &str) -> Self {
-        let response = serde_json::from_str::<DMJamUser>(response).unwrap();
+    pub fn from_dmjam(response: &str) -> Option<Self> {
+        let response = serde_json::from_str::<DMJamUser>(response).ok()?;
 
         let ranks = Ranks {
             global: Some(response.player_ranking),
@@ -184,13 +208,94 @@ impl User {
             response.player_code
         );
 
-        Self {
+        Some(Self {
             game: Game::DMJam,
             username: response.nickname,
             avatar_url: String::new(),
             ranks,
             country: None,
             link,
+            playtime: None,
+            level: Some(response.level),
+        })
+    }
+
+    pub fn create_profile_embed(&self, country: &str) -> CreateEmbed {
+        match self.game {
+            Game::Osu => Self::create_osu_embed(&self, country),
+            Game::Quaver => Self::create_quaver_embed(&self, country),
+            Game::DMJam => Self::create_dmjam_embed(&self, country),
+            Game::BMS => Self::create_bokutachi_embed(&self, country),
         }
+    }
+
+    fn create_osu_embed(user: &User, country: &str) -> CreateEmbed {
+        CreateEmbed::new()
+            .title(format!("Osu profile for {}", user.username))
+            .image(user.avatar_url.clone())
+            .description(format!(
+                "**- Country:** {country}\n
+                **- Rank:** Global: #{rank} | Country: #{country_rank}\n
+                **- Play Time:** {playtime}h\n
+                [{link}]
+                ",
+                country = country,
+                rank = user.ranks.global.unwrap_or(0),
+                country_rank = user.ranks.country.unwrap_or(0),
+                playtime = user.playtime.unwrap_or(0),
+                link = user.link,
+            ))
+            .color(0xff66f0)
+    }
+
+    fn create_quaver_embed(user: &User, country: &str) -> CreateEmbed {
+        CreateEmbed::new()
+            .title(format!("Quaver 7k profile for {}", user.username))
+            .image(user.avatar_url.clone())
+            .description(format!(
+                "**- Country:** {country}\n
+                **- Rank:** Global: #{rank} | Country: #{country_rank}\n
+                [{link}]
+                ",
+                country = country,
+                rank = user.ranks.global.unwrap_or(0),
+                country_rank = user.ranks.country.unwrap_or(0),
+                link = user.link,
+            ))
+            .color(0xff66f0)
+    }
+
+    fn create_bokutachi_embed(user: &User, country: &str) -> CreateEmbed {
+        CreateEmbed::new()
+            .title(format!("BMS 7k profile for {}", user.username))
+            .description(format!(
+                "**- Country:** {country}\n
+                **- Rank:** #{rank}\n
+                **- Play Time:** {playtime}h\n
+                [{link}]
+                ",
+                country = country,
+                rank = user.ranks.global.unwrap_or(0),
+                playtime = user.playtime.unwrap_or(0),
+                link = user.link,
+            ))
+            .color(0xff66f0)
+    }
+
+    fn create_dmjam_embed(user: &User, country: &str) -> CreateEmbed {
+        CreateEmbed::new()
+            .title(format!("DMJam profile for {}", user.username))
+            .description(format!(
+                "**- Country:** {country}\n
+                **- Level:** {level}\n
+                **- Rank:** #{rank}\n
+                [{link}]
+                ",
+                country = country,
+                level = user.level.unwrap_or(0),
+                rank = user.ranks.global.unwrap_or(0),
+                link = user.link,
+            ))
+            .color(0xff66f0)
     }
 }
