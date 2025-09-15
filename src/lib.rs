@@ -11,9 +11,15 @@ use serenity::prelude::*;
 use regex::Regex;
 
 use crate::verification::PendingVerifications;
-use commands::{config_command, list_command, verify_command};
+use commands::{config_command, list_command, verify_command, remove_user_command};
 
 use std::str::FromStr;
+
+pub struct ReqClientKey;
+
+impl TypeMapKey for ReqClientKey {
+    type Value = reqwest::Client;
+}
 
 pub struct GuildKey;
 
@@ -227,7 +233,7 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, data_about_bot: Ready) {
         println!("session with id: {} started", data_about_bot.session_id);
 
-        let commands = vec![commands::config_command::register()];
+        let commands = vec![commands::config_command::register(), commands::remove_user_command::register()];
 
         let data = ctx.data.read().await;
         let guild_id = data.get::<GuildKey>().expect("No guild key found");
