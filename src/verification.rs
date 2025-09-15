@@ -1,4 +1,4 @@
-use serenity::builder::{CreateEmbed, EditMember, EditMessage};
+use serenity::builder::{CreateEmbed, EditMember, EditMessage, EditRole};
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
@@ -48,24 +48,30 @@ impl VerificationInfo {
             emoji_shortcode = exception;
         }
 
-        let role = match guild.role_by_name(
-            &(country.to_string()
-                + " "
-                + emojis::get_by_shortcode(emoji_shortcode)
-                    .ok_or(format!("Could not get emoji from country: {}", &country))?
-                    .as_str()),
-        ) {
+        let role_name = country.to_string()
+            + " "
+            + emojis::get_by_shortcode(emoji_shortcode)
+                .ok_or(format!("Could not get emoji from country: {}", &country))?
+                .as_str();
+
+        let role = match guild.role_by_name(&role_name) {
             Some(role) => role,
             None => {
-                return Err(format!(
-                    "There is currently no role set up for the country: {}",
-                    &country
-                ));
+                // create role if it doesn't already exist
+                let role_builder = EditRole::new().name(&role_name);
+                &guild
+                    .create_role(&ctx.http, role_builder)
+                    .await
+                    .map_err(|_| format!("Could not create new role: {role_name}"))?
             }
         };
 
         if let Err(e) = self.discord_user.add_role(&ctx.http, role).await {
             return Err(format!("Could not add role to user: {e}"));
+        }
+
+        if let Err(_) = self.user.save_to_database(self.discord_user.user.id.get()) {
+            return Err(format!("Could not save user to database"));
         }
 
         let member_role = match guild.role_by_name("Member") {
