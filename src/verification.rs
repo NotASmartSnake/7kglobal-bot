@@ -70,6 +70,10 @@ impl VerificationInfo {
             return Err(format!("Could not add role to user: {e}"));
         }
 
+        if let Err(_) = self.user.save_to_database(self.discord_user.user.id.get()) {
+            return Err(format!("Could not save user to database"));
+        }
+
         let member_role = match guild.role_by_name("Member") {
             Some(role) => role,
             None => return Err("Member role does not exist".to_string()),

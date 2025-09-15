@@ -7,6 +7,8 @@ use sevenkey_global_bot::verification::PendingVerifications;
 
 use std::env;
 
+use rusqlite::Connection;
+
 #[tokio::main()]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token = env::var("DISCORD_TOKEN")?;
@@ -31,6 +33,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         data.insert::<PendingVerifications>(PendingVerifications::default());
         data.insert::<GuildKey>(guild_id);
         data.insert::<Osu>(osu);
+    }
+
+    {
+        let conn = Connection::open("users.db")?;
+        conn.execute(
+            "create table if not exists users (
+                 discord_id integer primary key,
+                 game text not null,
+                 player_id integer not null,
+                 username text not null,
+                 country text not null
+             )",
+            (),
+        )?;
     }
 
     client.start().await?;

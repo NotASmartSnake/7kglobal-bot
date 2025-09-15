@@ -10,6 +10,8 @@ use crate::game_api::{DMJam, Osu, Quaver, Tachi};
 use crate::user::User;
 use crate::verification::{PendingVerifications, VerificationInfo};
 
+use rusqlite::{Connection, params};
+
 const NOT_CONFIGURED: &'static str =
     "The bot is not yet configured, an admin needs to use the /config command";
 
@@ -166,30 +168,44 @@ pub async fn verify_user(
     Ok(())
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum VerificationError {
+    DatabaseError,
+    UserAlreadyExists(String),
+    NoArgumentSupplied,
+    CouldNotLoadConfig,
+    NotConfigured(String),
+    VerificationFailed(String),
+}
+
 pub async fn execute(
     ctx: &Context,
     channel_id: &ChannelId,
     member: Member,
     args: Args,
-) -> Result<(), String> {
-    let user = get_user_data(&ctx, &args.arg(0).ok_or("No argument supplied")?).await;
+) -> Result<(), VerificationError> {
+    let user = get_user_data(
+        &ctx,
+        &args.arg(0).ok_or(VerificationError::NoArgumentSupplied)?,
+    )
+    .await;
 
     let mut data = ctx.data.write().await;
 
-    let config = Config::load().ok_or("Could not load config")?;
+    let config = Config::load().ok_or(VerificationError::CouldNotLoadConfig)?;
 
     if let Some(verification_channel) = config.channels.verification_channel {
         if *channel_id != verification_channel {
             return Ok(());
         }
     } else {
-        return Err(NOT_CONFIGURED.to_string());
+        return Err(VerificationError::NotConfigured(NOT_CONFIGURED.to_string()));
     }
 
     let admin_channel = config
         .channels
         .admin_channel
-        .ok_or(NOT_CONFIGURED.to_string())?;
+        .ok_or(VerificationError::NotConfigured(NOT_CONFIGURED.to_string()))?;
 
     let verifications = data
         .get_mut::<PendingVerifications>()
@@ -197,6 +213,22 @@ pub async fn execute(
 
     if let Some(user) = user {
         let id = verifications.use_current_id();
+
+        {
+            let conn =
+                Connection::open("users.db").map_err(|_| VerificationError::DatabaseError)?;
+            let mut stmt = conn
+                .prepare("SELECT username FROM users WHERE discord_id=?1")
+                .map_err(|_| VerificationError::DatabaseError)?;
+
+            if let Ok(username) =
+                stmt.query_one([member.user.id.get()], |row| row.get::<_, String>(0))
+            {
+                return Err(VerificationError::UserAlreadyExists(format!(
+                    "User: {username} is already verified, please contact an admin"
+                )));
+            }
+        }
 
         let mut verification_info = VerificationInfo {
             id: id as u32,
@@ -207,7 +239,9 @@ pub async fn execute(
         };
 
         if let Some(_) = verification_info.user.country {
-            verify_user(&ctx, &mut verification_info, &channel_id, &admin_channel).await?;
+            verify_user(&ctx, &mut verification_info, &channel_id, &admin_channel)
+                .await
+                .map_err(|e| VerificationError::VerificationFailed(e))?;
             verifications.insert(id, verification_info);
         } else {
             country_interaction(&ctx, &verification_info, &channel_id).await;

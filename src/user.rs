@@ -1,11 +1,42 @@
+use rusqlite::{Connection, params};
 use serde::Deserialize;
 use serenity::builder::CreateEmbed;
+use std::fmt;
+use std::str::FromStr;
 
 pub enum Game {
     Osu,
     Quaver,
     BMS,
     DMJam,
+}
+
+impl fmt::Display for Game {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Self::Osu => write!(f, "osu"),
+            Self::Quaver => write!(f, "quaver"),
+            Self::BMS => write!(f, "bms"),
+            Self::DMJam => write!(f, "dmjam"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ParseGameError;
+
+impl FromStr for Game {
+    type Err = ParseGameError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "osu" => Ok(Self::Osu),
+            "quaver" => Ok(Self::Quaver),
+            "bms" => Ok(Self::BMS),
+            "dmjam" => Ok(Self::DMJam),
+            _ => Err(ParseGameError),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -16,6 +47,7 @@ pub struct Ranks {
 
 pub struct User {
     pub game: Game,
+    pub user_id: u32,
     pub username: String,
     pub country: Option<String>,
     pub ranks: Ranks,
@@ -108,7 +140,27 @@ struct DMJamUser {
     level: u32,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct DBSaveError;
+
 impl User {
+    pub fn save_to_database(&self, discord_user_id: u64) -> Result<(), DBSaveError> {
+        let conn = Connection::open("users.db").map_err(|_| DBSaveError)?;
+        conn.execute(
+            "INSERT INTO users (discord_id, game, player_id, username, country) values (?1, ?2, ?3, ?4, ?5)",
+            params![
+                discord_user_id,
+                self.game.to_string(),
+                self.user_id,
+                self.username,
+                self.country
+            ],
+        )
+        .map_err(|_| DBSaveError)?;
+
+        Ok(())
+    }
+
     pub fn from_osu(response: &str) -> Option<Self> {
         let response = serde_json::from_str::<OsuUser>(response).ok()?;
         let link = format!("http://osu.ppy.sh/users/{}", response.id);
@@ -126,6 +178,7 @@ impl User {
 
         Some(Self {
             game: Game::Osu,
+            user_id: response.id,
             username: response.username.to_string(),
             avatar_url: response.avatar_url.to_string(),
             country: Some(response.country.code.to_string()),
@@ -144,6 +197,7 @@ impl User {
 
         Some(Self {
             game: Game::Quaver,
+            user_id: response.id,
             username: response.username.to_string(),
             country: Some(response.country.to_string()),
             avatar_url: response.avatar_url.to_string(),
@@ -182,6 +236,7 @@ impl User {
 
         Some(Self {
             game: Game::BMS,
+            user_id: user_response.id,
             username: user_response.username,
             country: None,
             avatar_url: format!(
@@ -210,6 +265,7 @@ impl User {
 
         Some(Self {
             game: Game::DMJam,
+            user_id: response.player_code,
             username: response.nickname,
             avatar_url: String::new(),
             ranks,

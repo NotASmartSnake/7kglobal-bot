@@ -12,6 +12,7 @@ use regex::Regex;
 
 use crate::verification::PendingVerifications;
 use commands::{config_command, list_command, verify_command};
+use verify_command::VerificationError;
 
 use std::str::FromStr;
 
@@ -75,18 +76,43 @@ impl EventHandler for Handler {
 
         tokio::spawn(async move {
             if let Ok(member) = message.member(&ctx.http).await {
-                let result = match args.cmd() {
+                match args.cmd() {
                     "verify" => {
-                        verify_command::execute(&ctx, &message.channel_id, member, args).await
+                        let result =
+                            verify_command::execute(&ctx, &message.channel_id, member, args).await;
+
+                        match result {
+                            Err(VerificationError::UserAlreadyExists(e))
+                            | Err(VerificationError::NotConfigured(e))
+                            | Err(VerificationError::VerificationFailed(e)) => {
+                                if let Err(e) = message.channel_id.say(&ctx.http, e).await {
+                                    eprintln!("Could not send message {e}");
+                                }
+                            }
+                            Err(VerificationError::NoArgumentSupplied) => {
+                                if let Err(e) = message
+                                    .channel_id
+                                    .say(&ctx.http, "Please provide a profile link to verify.")
+                                    .await
+                                {
+                                    eprintln!("Could not send message {e}");
+                                }
+                            }
+                            _ => return,
+                        }
                     }
-                    "list" => list_command::execute(&ctx, &message.channel_id, &member, args).await,
+                    "list" => {
+                        let result =
+                            list_command::execute(&ctx, &message.channel_id, &member, args).await;
+
+                        if let Err(e) = result {
+                            if let Err(e) = message.channel_id.say(&ctx.http, e).await {
+                                eprintln!("Could not send message {e}");
+                            }
+                        }
+                    }
                     _ => return,
                 };
-                if let Err(e) = result {
-                    if let Err(e) = message.channel_id.say(&ctx.http, e).await {
-                        eprintln!("Could not send message {e}");
-                    }
-                }
             }
         });
     }
@@ -115,9 +141,11 @@ impl EventHandler for Handler {
                 if let ComponentInteractionDataKind::Button = component.data.kind {
                     let verifications = data.get_mut::<PendingVerifications>().unwrap();
 
-                    let verification = verifications
-                        .get_mut(&id[1].parse::<u64>().expect("Invalid Id"))
-                        .expect("Id could not be found in pending verifications");
+                    let verification =
+                        match verifications.get_mut(&id[1].parse::<u64>().expect("Invalid Id")) {
+                            Some(verification) => verification,
+                            None => return,
+                        };
 
                     let content = match id[0] {
                         "verify" => match verification.apply(&ctx, &guild_id).await {
