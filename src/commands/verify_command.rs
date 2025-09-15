@@ -5,12 +5,12 @@ use serenity::model::prelude::*;
 use serenity::prelude::*;
 
 use crate::config::Config;
-use crate::game_api::{DMJam, Mames, Osu, Quaver, Tachi};
+use crate::game_api::{DMJam, Osu, Quaver, Tachi};
 use crate::user::User;
 use crate::verification::{PendingVerifications, VerificationInfo};
-use crate::{Args, ReqClientKey};
+use crate::Args;
 
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 
 const NOT_CONFIGURED: &'static str =
     "The bot is not yet configured, an admin needs to use the /config command";
@@ -33,23 +33,6 @@ async fn get_user_data(ctx: &Context, account: &str) -> Option<User> {
             }
         }
         return None;
-    }
-
-    if account.starts_with("https://web.mamesosu.net/profile/")
-        || account.starts_with("web.mamesosu.net/profile/")
-    {
-        let mut parts = account.split("/");
-        while let Some(part) = parts.next() {
-            if part == "profile" {
-                let data = &ctx.data.read().await;
-                let req_client = data.get::<ReqClientKey>().unwrap();
-                let user_id = parts.next()?;
-                let response = Mames::get_user(req_client.clone(), user_id).await?;
-                let response_text = response.text().await.ok()?;
-
-                return User::from_mames(&response_text);
-            }
-        }
     }
 
     if account.starts_with("https://quavergame.com/user")
