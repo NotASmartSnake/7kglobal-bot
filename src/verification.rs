@@ -70,7 +70,11 @@ impl VerificationInfo {
             return Err(format!("Could not add role to user: {e}"));
         }
 
-        if let Err(_) = self.user.save_to_database(self.discord_user.user.id.get()) {
+        // Save new user to database
+        if let Err(_) = self
+            .user
+            .save_to_database(self.discord_user.user.id.get(), Some(country))
+        {
             return Err(format!("Could not save user to database"));
         }
 

@@ -144,7 +144,11 @@ struct DMJamUser {
 pub struct DBSaveError;
 
 impl User {
-    pub fn save_to_database(&self, discord_user_id: u64) -> Result<(), DBSaveError> {
+    pub fn save_to_database(
+        &self,
+        discord_user_id: u64,
+        country: Option<&str>,
+    ) -> Result<(), DBSaveError> {
         let conn = Connection::open("users.db").map_err(|_| DBSaveError)?;
         conn.execute(
             "INSERT INTO users (discord_id, game, player_id, username, country) values (?1, ?2, ?3, ?4, ?5)",
@@ -153,7 +157,7 @@ impl User {
                 self.game.to_string(),
                 self.user_id,
                 self.username,
-                self.country
+                country.map(|s| s.to_string())
             ],
         )
         .map_err(|_| DBSaveError)?;
