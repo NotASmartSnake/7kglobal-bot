@@ -13,6 +13,7 @@ use regex::Regex;
 use crate::verification::PendingVerifications;
 use commands::{config_command, list_command, verify_command, remove_user_command};
 use verify_command::VerificationError;
+use remove_user_command::RemoveUserError;
 
 use std::str::FromStr;
 
@@ -128,6 +129,15 @@ impl EventHandler for Handler {
             Interaction::Command(command) => {
                 let content = match command.data.name.as_str() {
                     "config" => config_command::execute(&command.data).await,
+                    "remove_user" => {
+                        let result = remove_user_command::execute(&command.data).await;
+                        match result {
+                            Ok(s) => s,
+                            Err(RemoveUserError::DatabaseFailure) => "Could not remove user from database".to_string(),
+                            Err(RemoveUserError::InvalidGame(game)) => format!("{game} is not a valid game"),
+                            Err(RemoveUserError::InvalidOption) => "Options were not inputted correctly".to_string(),
+                        }
+                    }
                     _ => return,
                 };
 

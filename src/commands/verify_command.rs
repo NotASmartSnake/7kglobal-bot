@@ -217,17 +217,36 @@ pub async fn execute(
         {
             let conn =
                 Connection::open("users.db").map_err(|_| VerificationError::DatabaseError)?;
+
+            let discord_id = member.user.id.get();
+
             let mut stmt = conn
+                .prepare("SELECT discord_id FROM users WHERE game=?1 AND username=?2")
+                .map_err(|_| VerificationError::DatabaseError)?;
+
+            if let Ok(other_discord_id) = 
+                stmt.query_one([user.game.to_string(), user.username.clone()], |row| row.get::<_, String>(0)) 
+            {
+                return Err(VerificationError::UserAlreadyExists(format!(
+                    "That user is already verified by <@{other_discord_id}>,
+                    please contact an admin if that is not you."
+                )));
+            }
+
+            stmt = conn
                 .prepare("SELECT username FROM users WHERE discord_id=?1")
                 .map_err(|_| VerificationError::DatabaseError)?;
 
+
             if let Ok(username) =
-                stmt.query_one([member.user.id.get()], |row| row.get::<_, String>(0))
+                stmt.query_one([discord_id], |row| row.get::<_, String>(0))
             {
                 return Err(VerificationError::UserAlreadyExists(format!(
-                    "User: {username} is already verified, please contact an admin"
+                    "User <@{discord_id}> is already verified with username: {username},
+                    please contact an admin"
                 )));
             }
+
         }
 
         let mut verification_info = VerificationInfo {
