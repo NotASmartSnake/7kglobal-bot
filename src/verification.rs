@@ -47,6 +47,7 @@ impl VerificationInfo {
         if let Some(exception) = config.emoji_exceptions.get(emoji_shortcode) {
             emoji_shortcode = exception;
         }
+
         let emoji = emojis::get_by_shortcode(emoji_shortcode)
             .ok_or(format!("Could not get emoji from country: {}", &country))?
             .as_str();
@@ -57,13 +58,23 @@ impl VerificationInfo {
             Some(role) => role,
             None => {
                 // create role if it doesn't already exist
-                let role_builder = EditRole::new()
-                    .name(&role_name)
-                    .unicode_emoji(Some(emoji.to_string()));
+                let role_builder = EditRole::new().name(&role_name);
+
+                let role_builder = if guild.premium_tier >= PremiumTier::Tier2 {
+                    role_builder.unicode_emoji(Some(emoji.to_string()))
+                } else {
+                    role_builder
+                };
+
                 &guild
                     .create_role(&ctx.http, role_builder)
                     .await
-                    .map_err(|_| format!("Could not create new role: {role_name}"))?
+                    .map_err(|e| {
+                        format!(
+                            "Could not create new role: {role_name}.\n
+                            Reason: {e}"
+                        )
+                    })?
             }
         };
 
