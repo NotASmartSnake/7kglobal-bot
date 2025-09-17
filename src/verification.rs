@@ -47,18 +47,19 @@ impl VerificationInfo {
         if let Some(exception) = config.emoji_exceptions.get(emoji_shortcode) {
             emoji_shortcode = exception;
         }
+        let emoji = emojis::get_by_shortcode(emoji_shortcode)
+            .ok_or(format!("Could not get emoji from country: {}", &country))?
+            .as_str();
 
-        let role_name = country.to_string()
-            + " "
-            + emojis::get_by_shortcode(emoji_shortcode)
-                .ok_or(format!("Could not get emoji from country: {}", &country))?
-                .as_str();
+        let role_name = country.to_string() + " " + emoji;
 
         let role = match guild.role_by_name(&role_name) {
             Some(role) => role,
             None => {
                 // create role if it doesn't already exist
-                let role_builder = EditRole::new().name(&role_name);
+                let role_builder = EditRole::new()
+                    .name(&role_name)
+                    .unicode_emoji(Some(emoji.to_string()));
                 &guild
                     .create_role(&ctx.http, role_builder)
                     .await
