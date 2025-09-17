@@ -150,7 +150,8 @@ impl User {
         country: Option<&str>,
     ) -> Result<(), DBSaveError> {
         let conn = Connection::open("users.db").map_err(|_| DBSaveError)?;
-        conn.execute(
+
+        let _ = conn.execute(
             "INSERT INTO users (discord_id, game, player_id, username, country) values (?1, ?2, ?3, ?4, ?5)",
             params![
                 discord_user_id,
@@ -159,8 +160,7 @@ impl User {
                 self.username,
                 country.map(|s| s.to_string())
             ],
-        )
-        .map_err(|_| DBSaveError)?;
+        );
 
         Ok(())
     }
